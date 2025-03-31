@@ -1,0 +1,127 @@
+CREATE OR REPLACE VIEW VIEW_COBRANCA_PALETE AS
+SELECT A.DATA_EMISSAO,
+       A.SEQPESSOA,
+       A.FORN,
+       A.EMP_REC,
+       A.NUMERONF,
+       A.SERIE,
+       A.VLR_NF,
+       A.SKU,
+       A.DESCCOMPLETA,
+       A.EMB_COMP,
+       A.QTD_NF_UN,
+       A.CX,
+       PESO AS peso_cx,
+       A.TIPO_NORMA,
+       A.PAL_LAST,
+       A.PAL_ALT,
+       (A.PAL_LAST * A.PAL_ALT) AS LAST_X_ALT,
+       ROUND(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA) * PESO, 2) AS PESO_TOTAL,
+       (ROUND(FC5_DIVIDE(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA),
+                         (A.PAL_LAST * A.PAL_ALT)),
+              2) * 100) / 100 AS PERC_FRACAO_PALETE,
+       CASE
+         WHEN EXISTS (SELECT 1 FROM icinfo.tbz_faturamento_pallet
+                      WHERE seqfornecedor = A.SEQPESSOA AND valor = 0) THEN 0
+         WHEN EXISTS (SELECT 1 FROM icinfo.tbz_faturamento_pallet
+                      WHERE seqfornecedor = A.SEQPESSOA AND tipo_cobranca = 'PALETE') THEN
+           ROUND(FC5_DIVIDE(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA),
+                            (A.PAL_LAST * A.PAL_ALT)), 2) *
+           (SELECT valor FROM icinfo.tbz_faturamento_pallet
+             WHERE seqfornecedor = A.SEQPESSOA AND tipo_cobranca = 'PALETE')
+         WHEN EXISTS (SELECT 1 FROM icinfo.tbz_faturamento_pallet
+                      WHERE seqfornecedor = A.SEQPESSOA AND tipo_cobranca = 'PESO') THEN
+           ROUND(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA) * PESO, 2) *
+           (SELECT valor FROM icinfo.tbz_faturamento_pallet
+             WHERE seqfornecedor = A.SEQPESSOA AND tipo_cobranca = 'PESO')
+         ELSE
+           ROUND(FC5_DIVIDE(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA),
+                            (A.PAL_LAST * A.PAL_ALT)), 2) *
+           (SELECT valor FROM icinfo.tbz_faturamento_pallet WHERE tipo_cobranca = 'GERAL')
+       END AS VLR_COBRAR,
+       NVL((SELECT tipo_cobranca FROM icinfo.tbz_faturamento_pallet
+             WHERE seqfornecedor = A.SEQPESSOA AND ROWNUM = 1), 'GERAL') || ' ' ||
+       NVL((SELECT valor FROM icinfo.tbz_faturamento_pallet
+             WHERE seqfornecedor = A.SEQPESSOA AND ROWNUM = 1),
+           (SELECT valor FROM icinfo.tbz_faturamento_pallet WHERE tipo_cobranca = 'GERAL')) AS tipo_cobranca
+  FROM (
+    SELECT TO_CHAR(NF.DTAEMISSAO, 'DD/MM/YYYY') AS DATA_EMISSAO,
+           NF.SEQPESSOA,
+           G.NOMERAZAO AS FORN,
+           NF.NROEMPRESA AS EMP_REC,
+           NF.NUMERONF,
+           NF.SERIENF AS SERIE,
+           NF.VLRTOTALNF AS VLR_NF,
+           IT.SEQPRODUTO AS SKU,
+           P.DESCCOMPLETA,
+           IT.QUANTIDADE,
+           FD.PADRAOEMBCOMPRA,
+           ROUND(FD.PADRAOEMBCOMPRA, 2) AS EMB_COMP,
+           ROUND(IT.QUANTIDADE, 2) AS QTD_NF_UN,
+           ROUND(FC5_DIVIDE(ROUND(IT.QUANTIDADE, 2),
+                            ROUND(FD.PADRAOEMBCOMPRA, 2)), 2) AS CX,
+           CASE
+             WHEN PEND.PALETELASTRO <> 999 AND PEND.PALETELASTRO IS NOT NULL THEN 'TEM NORMA'
+             ELSE 'NORMA MEDIA CD'
+           END AS TIPO_NORMA,
+           CASE
+             WHEN PEND.PALETELASTRO IS NULL OR PEND.PALETELASTRO = 999 THEN
+              (SELECT ROUND(AVG(P2.PALETELASTRO), 0)
+                 FROM MAD_PRODESPENDERECO P2
+                 JOIN MRL_PRODUTOEMPRESA PE ON P2.SEQPRODUTO = PE.SEQPRODUTO
+                 JOIN MAP_PRODUTO P_ ON P2.SEQPRODUTO = P_.SEQPRODUTO
+                WHERE PE.NROEMPRESA = P2.NROEMPRESA
+                  AND PE.STATUSCOMPRA = 'A'
+                  AND P2.PALETELASTRO < 999
+                  AND P2.NROEMPRESA = 107
+                  AND P2.CODESPECENDERECO = 'P')
+             ELSE PEND.PALETELASTRO
+           END AS PAL_LAST,
+           CASE
+             WHEN PEND.PALETEALTURA IS NULL OR PEND.PALETEALTURA = 99 THEN
+              (SELECT ROUND(AVG(P2.PALETEALTURA), 0)
+                 FROM MAD_PRODESPENDERECO P2
+                 JOIN MRL_PRODUTOEMPRESA PE ON P2.SEQPRODUTO = PE.SEQPRODUTO
+                 JOIN MAP_PRODUTO P_ ON P2.SEQPRODUTO = P_.SEQPRODUTO
+                WHERE PE.NROEMPRESA = P2.NROEMPRESA
+                  AND PE.STATUSCOMPRA = 'A'
+                  AND P2.PALETELASTRO < 999
+                  AND P2.NROEMPRESA = 107
+                  AND P2.CODESPECENDERECO = 'P')
+             ELSE PEND.PALETEALTURA
+           END AS PAL_ALT,
+           TRUNC(PEND.PALETELASTRO * PEND.PALETEALTURA) AS QTD_CX_MAX_POR_PALETE,
+           EMB.pesobruto AS PESO
+      FROM MLF_AUXNOTAFISCAL NF
+      JOIN MLF_AUXNFITEM IT ON NF.SEQAUXNOTAFISCAL = IT.SEQAUXNOTAFISCAL
+      JOIN GE_PESSOA G ON G.SEQPESSOA = NF.SEQPESSOA
+      JOIN MAP_PRODUTO P ON IT.SEQPRODUTO = P.SEQPRODUTO
+      LEFT JOIN MAD_PRODESPENDERECO PEND ON P.SEQPRODUTO = PEND.SEQPRODUTO
+         AND PEND.NROEMPRESA = 107 AND PEND.CODESPECENDERECO = 'P'
+      JOIN MAP_FAMEMBALAGEM EMB ON EMB.SEQFAMILIA = P.SEQFAMILIA AND EMB.QTDEMBALAGEM = IT.QTDEMBALAGEM
+      JOIN MAP_FAMDIVISAO FD ON FD.SEQFAMILIA = P.SEQFAMILIA
+      JOIN MAX_EMPRESA E ON NF.NROEMPRESA = E.NROEMPRESA AND FD.NRODIVISAO = E.NRODIVISAO
+      JOIN MAX_CODGERALOPER CGO ON CGO.CODGERALOPER = NF.CODGERALOPER
+     WHERE G.NROCGCCPF NOT LIKE '%92016757%'
+       AND NVL(NF.APPORIGEM, 0) != 22
+       AND CGO.CODGERALOPER NOT IN (650, 517, 484, 425, 430, 197, 461, 528)
+  ) A
+GROUP BY A.DATA_EMISSAO,
+         A.SEQPESSOA,
+         A.FORN,
+         A.EMP_REC,
+         A.NUMERONF,
+         A.SERIE,
+         A.VLR_NF,
+         A.SKU,
+         A.DESCCOMPLETA,
+         A.EMB_COMP,
+         A.QTD_NF_UN,
+         A.CX,
+         PESO,
+         A.TIPO_NORMA,
+         A.PAL_LAST,
+         A.PAL_ALT,
+         A.QUANTIDADE,
+         A.PADRAOEMBCOMPRA,
+         ROUND(FC5_DIVIDE(A.QUANTIDADE, A.PADRAOEMBCOMPRA) * PESO, 2);

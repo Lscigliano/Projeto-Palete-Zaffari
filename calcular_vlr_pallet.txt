@@ -1,0 +1,494 @@
+CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
+       p_emprec IN NUMBER,
+       p_numeronf IN NUMBER,
+       p_cpfcnpj in VARCHAR2
+) IS
+
+    -- Cursor para buscar os dados dos pallets
+    CURSOR c_pallet IS
+        SELECT * FROM CONSINCO.VIEW_COBRANCA_PALETE
+        WHERE EMP_REC = p_emprec 
+        AND NUMERONF  = p_numeronf;
+
+
+    -- Variáveis para cálculo
+    v_seqpessoa NUMBER;
+    v_numeronf NUMBER;
+    v_vlr_cobrar NUMBER;
+    v_total_cobrar NUMBER := 0; --não pode alterar esse valor.
+    
+    
+
+    
+    --Variavel cancelamento pedido anterior;
+    --v_last_seq NUMBER;
+    v_previous_id_pedido_canal VARCHAR2(60);
+    v_nropedvenda NUMBER;
+
+    -- Dados do fornecedor
+    v_cpfcnpj VARCHAR2(15);
+    v_digcpf VARCHAR2(2);
+    v_nomerazao VARCHAR2(100);
+    v_cidade VARCHAR2(50);
+    v_uf VARCHAR2(2);
+    v_bairro VARCHAR2(30);
+    v_pais VARCHAR2(30);
+
+    -- Declaração  criacao pedido
+    v_cgo NUMBER(4) := 835;
+    v_nrorepresen NUMBER(4) := p_emprec;
+    v_nrotabvenda NUMBER(4) := 1;
+    v_observacaoitem VARCHAR2(20) := 'CP Ref NF:' || p_numeronf;
+    v_vlrembtabpreco NUMBER(10,2) := 1;
+    v_vlrembinformado NUMBER(10,2) := 1;
+    v_qtdembalagem NUMBER(38) := 1;
+    v_tipoentrega VARCHAR2(38) := 'R';
+    v_qtdPedida NUMBER(38) := 1;
+    v_seqproduto NUMBER(38) := 93032;
+    v_nroformapagto NUMBER(38) := 1;
+    v_nrocondpagto NUMBER(38) := 0;
+    v_valorpagto NUMBER(38);
+    v_seqcanal NUMBER(2) := 1;
+
+    
+    -- ID do pedido no canal de vendas
+    v_id_pedido_canal VARCHAR2(60);
+
+     -- Variável para armazenar o último número da sequência
+     v_last_seq NUMBER;
+
+    -- Novo token de autenticação
+    v_new_auth_token VARCHAR2(2000);
+
+    -- Endpoints das APIs
+    v_auth_url VARCHAR2(500) := 'http://10.0.110.42:8343/api/v1/auth/login';
+    v_order_url VARCHAR2(500) := 'http://10.0.110.42:8343/smpedidovendaapi/api/v1/PedidoVenda';
+
+    -- Variáveis para requisições HTTP
+    v_http_req  UTL_HTTP.REQ;
+    v_http_resp UTL_HTTP.RESP;
+    v_buffer    VARCHAR2(4000);
+    v_response  CLOB;
+    v_auth_body CLOB := '{"company":"1","username":"APIZAFFARI","password":"apizaffari"}';
+    v_body CLOB;
+    v_body_length NUMBER;
+    v_token_start NUMBER;
+    v_token_end   NUMBER;
+
+BEGIN
+    --Requisição para obter o token de autenticação
+    DBMS_OUTPUT.PUT_LINE('Iniciando autenticação...');
+
+    -- Criar requisição HTTP POST
+    v_http_req := UTL_HTTP.BEGIN_REQUEST(v_auth_url, 'POST', 'HTTP/1.1');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/json');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', TO_CHAR(LENGTH(v_auth_body)));
+
+    -- Enviar corpo da requisição
+    UTL_HTTP.WRITE_TEXT(v_http_req, v_auth_body);
+    v_http_resp := UTL_HTTP.GET_RESPONSE(v_http_req);
+
+    -- Ler resposta da autenticação
+    v_response := '';
+    BEGIN
+        LOOP
+            UTL_HTTP.READ_LINE(v_http_resp, v_buffer, TRUE);
+            v_response := v_response || v_buffer;
+        END LOOP;
+    EXCEPTION
+        WHEN UTL_HTTP.END_OF_BODY THEN
+            NULL;
+    END;
+
+    UTL_HTTP.END_RESPONSE(v_http_resp);
+
+    -- Extraindo o token da resposta JSON
+    v_token_start := INSTR(v_response, '"access_token":"') + 16;
+    v_token_end := INSTR(v_response, '"', v_token_start);
+
+    IF v_token_start > 16 AND v_token_end > v_token_start THEN
+        v_new_auth_token := 'Bearer ' || SUBSTR(v_response, v_token_start, v_token_end - v_token_start);
+        DBMS_OUTPUT.PUT_LINE('Novo Token Obtido: ' || v_new_auth_token);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Erro ao extrair token. Resposta: ' || v_response);
+        RETURN;
+    END IF;
+    
+---------------------------------------------------    
+
+   BEGIN
+ -- *** Seleção do fornecedor ANTES do loop ***
+    -- *** Primeiro tenta buscar o fornecedor alternativo ***
+    IF p_cpfcnpj > 0 THEN
+        BEGIN
+      SELECT LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'), 
+       NOMERAZAO, CIDADE, UF, 
+       REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''), 
+       PAIS, SEQPESSOA
+       INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa
+       FROM GE_PESSOA
+       WHERE LPAD(NROCGCCPF, 12, '0') = SUBSTR(LPAD(p_cpfcnpj, 14, '0'), 1, 12)
+       AND LPAD(DIGCGCCPF, 2, '0') = SUBSTR(LPAD(p_cpfcnpj, 14, '0'), 13, 2)
+       AND ROWNUM = 1;
+
+            DBMS_OUTPUT.PUT_LINE('Fornecedor alternativo encontrado: ' || v_nomerazao || ' | CNPJ: ' || v_cpfcnpj);
+            
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('CNPJ informado (' || p_cpfcnpj || ') NÃO encontrado. Mantendo fornecedor da NF.');
+                v_cpfcnpj := NULL;  
+        END;
+    END IF;
+
+    -- *** Se não encontrou o fornecedor alternativo, busca o fornecedor da NF ***
+    
+    IF v_seqpessoa IS NULL THEN
+  BEGIN
+     SELECT LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'),
+           NOMERAZAO, CIDADE, UF,
+           REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''),
+           PAIS, SEQPESSOA
+    INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa
+    FROM GE_PESSOA
+    WHERE SEQPESSOA = (
+      SELECT SEQPESSOA
+      FROM VIEW_COBRANCA_PALETE
+      WHERE EMP_REC = p_emprec
+        AND NUMERONF = p_numeronf
+        AND ROWNUM = 1
+    );
+
+    DBMS_OUTPUT.PUT_LINE('Fornecedor original da NF utilizado: ' || v_nomerazao || ' | CNPJ: ' || v_cpfcnpj);
+
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      DBMS_OUTPUT.PUT_LINE('Nenhum dado encontrado para fornecedor da NF.');
+      RETURN;
+  END;
+END IF;
+
+
+    -- *** Depuração para verificar se o fornecedor foi corretamente selecionado antes do loop ***
+    DBMS_OUTPUT.PUT_LINE('Fornecedor final no pedido: ' || v_nomerazao || ' | CNPJ: ' || v_cpfcnpj);
+
+
+
+  
+    
+
+    -- Calcula o valor total da NF
+    FOR r IN c_pallet LOOP
+        v_seqpessoa := r.seqpessoa;
+        v_numeronf := r.numeronf;
+        v_vlr_cobrar := NVL(r.vlr_cobrar, 0);
+        v_total_cobrar := v_total_cobrar + v_vlr_cobrar;
+        
+        DBMS_OUTPUT.PUT_LINE('SEQ_PESSOA: ' || v_seqpessoa ||
+                             ' | NUMERONF: ' || v_numeronf ||
+                             ' | VLR_COBRAR ITEM: ' || v_vlr_cobrar);
+       
+                  
+        
+    END LOOP;
+    /*
+SELECT 
+  LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'),
+  NOMERAZAO,
+  CIDADE,
+  UF,
+  REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''),
+  PAIS
+INTO 
+  v_cpfcnpj,
+  v_nomerazao,
+  v_cidade,
+  v_uf,
+  v_bairro,
+  v_pais
+FROM GE_PESSOA GPES
+WHERE GPES.SEQPESSOA = v_seqpessoa; */
+
+  
+    IF v_total_cobrar IS NULL OR v_total_cobrar < 0.01 THEN
+    v_total_cobrar := 0.01;
+END IF;
+
+    -- Exibe o total ao final do processamento
+  DBMS_OUTPUT.PUT_LINE('TOTAL A PAGAR: ' || v_total_cobrar);
+  
+
+----------------- Consulta o pedido criado, se não existir cria sequencial 1.
+
+
+BEGIN
+    -- Verifica se já existe um ID para essa NF no banco
+    BEGIN
+        SELECT MAX(TO_NUMBER(REGEXP_SUBSTR(nropedcliente, '_([0-9]+)$', 1, 1, NULL, 1)))
+        INTO v_last_seq
+        FROM mad_pedvenda 
+        WHERE nropedcliente LIKE 'CP_' || p_emprec || '_' || v_seqpessoa || '_' || p_numeronf || '_%';
+
+        -- Se encontrou registros, incrementa o número
+        IF v_last_seq IS NOT NULL THEN
+            v_previous_id_pedido_canal := 'CP_' || p_emprec || '_' || v_seqpessoa || '_' || p_numeronf || '_' || v_last_seq;
+            v_last_seq := v_last_seq + 1;
+        ELSE
+            v_last_seq := 1; -- Se não encontrou, começa com _1
+        END IF;
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            v_last_seq := 1; -- Se a NF nunca foi usada, começa do _1
+    END;
+
+    -- Gera o ID do pedido com a sequência correta
+    v_id_pedido_canal := 'CP_' || p_emprec || '_' || v_seqpessoa || '_' || p_numeronf || '_' || v_last_seq;
+
+    -- Exibe o novo ID gerado no log para depuração
+    DBMS_OUTPUT.PUT_LINE('Novo ID Pedido Canal: ' || v_id_pedido_canal);
+
+    -- Se existe um pedido anterior, buscar o número do pedido para cancelamento
+    IF v_last_seq > 1 THEN
+        BEGIN
+            SELECT NROPEDVENDA
+            INTO v_nropedvenda
+            FROM mad_pedvenda
+            WHERE nropedcliente = v_previous_id_pedido_canal
+            AND NROEMPRESA = p_emprec
+            AND ROWNUM = 1;
+
+            DBMS_OUTPUT.PUT_LINE('Cancelando pedido anterior: ' || v_previous_id_pedido_canal || ' | NROPEDVENDA: ' || v_nropedvenda);
+
+            -- Atualiza o pedido para situação 'D'
+            UPDATE Mad_Pedvenda 
+            SET Situacaoped = 'D'
+            WHERE Nropedvenda = v_nropedvenda
+            AND Nroempresa = p_emprec;
+   
+
+            -- Zera a quantidade atendida nos itens do pedido
+            UPDATE Mad_Pedvendaitem 
+            SET Qtdatendida = 0
+            WHERE Nropedvenda = v_nropedvenda
+            AND Nroempresa = p_emprec;
+            
+
+            -- Finaliza o cancelamento do pedido
+            UPDATE Mad_Pedvenda 
+            SET Situacaoped = 'C',
+                Dtacancelamento = SYSDATE,
+                Usucancelamento = 'CONSINCO',
+                Obscancelamento = 'Pedido Refeito',
+                Motcancelamento = 'Cobrança errada'
+            WHERE Nropedvenda = v_nropedvenda
+            AND Nroempresa = p_emprec;
+            
+
+            DBMS_OUTPUT.PUT_LINE('Pedido anterior cancelado com sucesso.');
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('Nenhum pedido anterior encontrado para cancelamento.');
+        END;
+    END IF;
+    
+    COMMIT;
+
+    -- **Evitar erro de fechamento inesperado do bloco**
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erro inesperado ao processar pedido: ' || SQLERRM);
+END;
+
+
+
+
+
+ ----------------------------------------------
+        
+        --Indice print
+        DBMS_OUTPUT.PUT_LINE('Dados fornecedor:');
+        
+        --PRINT VARIAVEIS FORNECEDOR2
+ DBMS_OUTPUT.PUT_LINE('NOMERAZAO: ' || v_nomerazao || 
+                         ' | CIDADE: ' || v_cidade ||
+                         ' | PAIS: ' || v_pais ||
+                         ' | UF: ' || v_uf ||
+                         ' | BAIRRO: ' || v_bairro ||
+                         ' | NROCGCCPF: ' || v_cpfcnpj ||
+                         ' | DIGCGCCPF: ' || v_digcpf  );
+                         
+                         
+  DBMS_OUTPUT.PUT_LINE('Dados Pedido:');                         
+                         -- PRINT Variaveis pedido
+ DBMS_OUTPUT.PUT_LINE    ('codCGO: ' || v_cgo ||
+                         ' | NroRepresen: '|| v_nrorepresen ||
+                         ' | NroTabVend: ' || v_nrotabvenda ||
+                         --' | datavenda: ' || v_dtapedvenda ||
+                         ' | NroEmpresa:' || p_emprec ||
+                         ' | ObservacaoItm:' || v_observacaoitem ||
+                         ' | vlrEmbTabPreco:' || v_vlrembtabpreco ||                        
+                         ' | vlrEmbInformado:' || v_vlrembinformado ||
+                         ' | qtdembalagem:'  || v_qtdembalagem ||
+                         ' | tipoentrega:'   || v_tipoentrega ||
+                         ' | seqproduto:'    || v_seqproduto ||
+                         ' | qtdpedida:'   || v_qtdPedida ||
+                         ' | NroFormaPagto:' || v_nroformapagto ||
+                         ' | nrocondpagto:' || v_nrocondpagto ||
+                         ' | valorpagto:'   || v_valorpagto ||                         
+                         ' | SeqCanalVenda:' || v_seqcanal ||
+                         --' | idPedidoCanalVenda:' || v_idpedcanalvenda ||
+                         ' | SeqCanalVendaAPI: ' || v_seqcanal );                       
+        
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            DBMS_OUTPUT.PUT_LINE('Nenhum dado encontrado para fornecedor.');
+            RETURN;
+    END;
+    -- teste para ver se o id_pedido tem valor
+DBMS_OUTPUT.PUT_LINE('ID Pedido Canal teste: ' || v_id_pedido_canal);
+
+
+    -- Criando o JSON do pedido
+    v_body := '
+    {
+        "seqCanalVenda": ' || v_seqcanal || ',
+        "idPedidoCanalVenda": "' || v_id_pedido_canal || '",
+        "dtaHorPedidoCanalVenda": "' || TO_CHAR(SYSDATE, 'YYYY-MM-DD"T"HH24:MI:SS".000Z"') || '",
+        "nroEmpresa": '|| p_emprec ||',
+        "codGeralOper": '|| v_cgo ||',
+        "nroRepresentante": ' || p_emprec || ',
+        "nroTabVenda": "' || v_nrotabvenda || '",
+        "tipoEntrega": "' || v_tipoentrega || '",
+        "obsPedido": "' || 'CP Ref NF: ' || p_numeronf || '",
+        "obsNotaFiscal": "' || 'CP Ref NF: ' || p_numeronf || '",
+        "clienteDto": {
+            "cpfCnpj": "' || v_cpfcnpj || '",
+            "nomeRazaoSocial": "' || v_nomerazao || '",
+            "cidade": "' || v_cidade || '",
+            "uf": "' || v_uf || '",
+            "pais": "' || v_pais || '",
+            "bairro": "' || v_bairro || '"
+        },
+        "itemDto": [
+            {
+                "seqProduto": '|| v_seqproduto ||',
+                "qtdPedida": '|| v_qtdPedida ||',
+                "qtdEmbalagem": '|| v_qtdembalagem ||',
+                "vlrEmbTabPreco": '|| v_total_cobrar ||',
+                "vlrEmbInformado": '|| v_total_cobrar ||',
+                "observacaoItem": "' || 'CP Ref NF: ' || p_numeronf || '"
+            }
+        ],
+        "pagamentoDto": [
+            {
+                "nroFormaPagto": 1,
+                "nroCondPagto": 0,
+                "valorPagto": ' || 
+        CASE 
+            WHEN v_total_cobrar < 0.01 THEN '0.01' 
+            ELSE TRIM(TO_CHAR(v_total_cobrar, 'FM9999990.00')) 
+        END || '
+            }
+        ]
+    }';
+
+    -- Definir o Content-Length corretamente
+    v_body_length := LENGTH(v_body);
+    
+    
+       --Imprimir JSON antes de enviar (para depuração)
+    DBMS_OUTPUT.PUT_LINE('JSON enviado: ' || v_body);
+    
+    
+
+    -- Criar o pedido (com o novo token)
+    v_http_req := UTL_HTTP.BEGIN_REQUEST(v_order_url, 'POST', 'HTTP/1.1');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/json');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Authorization', v_new_auth_token);
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', TO_CHAR(v_body_length));
+
+    UTL_HTTP.WRITE_TEXT(v_http_req, v_body);
+    v_http_resp := UTL_HTTP.GET_RESPONSE(v_http_req);
+
+    -- Ler resposta da API de criação do pedido
+    v_response := '';
+    BEGIN
+        LOOP
+            UTL_HTTP.READ_LINE(v_http_resp, v_buffer, TRUE);
+            v_response := v_response || v_buffer;
+        END LOOP;
+    EXCEPTION
+        WHEN UTL_HTTP.END_OF_BODY THEN
+            NULL;
+    END;
+
+    UTL_HTTP.END_RESPONSE(v_http_resp);
+
+    -- Exibir resposta
+    DBMS_OUTPUT.PUT_LINE('Resposta da API: ' || v_response);
+    
+    begin
+pkg_mad_imppedido.sp_ProcessaPedido();
+end;
+    
+    
+    
+    BEGIN
+    IF v_total_cobrar = 0.01 THEN
+        BEGIN
+            SELECT NROPEDVENDA
+              INTO v_nropedvenda
+              FROM mad_pedvenda
+             WHERE nropedcliente = v_id_pedido_canal
+               AND nroempresa = p_emprec
+               AND ROWNUM = 1;
+
+            DBMS_OUTPUT.PUT_LINE('Iniciando cancelamento do pedido com valor 0.01: ' || v_nropedvenda);
+
+            -- Atualiza a situação do pedido para 'D'
+            UPDATE Mad_Pedvenda c
+               SET c.Situacaoped = 'D'
+             WHERE c.Nropedvenda = v_nropedvenda
+               AND c.Nroempresa = p_emprec;
+
+            -- Zera a quantidade atendida dos itens
+            UPDATE Mad_Pedvendaitem i
+               SET i.Qtdatendida = 0
+             WHERE i.Nropedvenda = v_nropedvenda
+               AND i.Nroempresa = p_emprec;
+
+            -- Finaliza o cancelamento com status 'C'
+            UPDATE Mad_Pedvenda c
+               SET c.Situacaoped     = 'C',
+                   c.Dtacancelamento = SYSDATE,
+                   c.Usucancelamento = 'CONSINCO',
+                   c.Obscancelamento = 'Valor COBRANCA MENOR QUE 0.01',
+                   c.Obspedido= 'Valor COBRANCA MENOR QUE 0.01',
+                   c.Motcancelamento = 'Valor COBRANCA MENOR QUE 0.01'
+             WHERE c.Nropedvenda = v_nropedvenda
+               AND c.Nroempresa = p_emprec;
+
+            COMMIT;
+
+            DBMS_OUTPUT.PUT_LINE('Pedido com valor 0.01 cancelado com sucesso.');
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('Nenhum pedido encontrado para cancelar com valor 0.01.');
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Erro ao cancelar pedido com valor 0.01: ' || SQLERRM);
+        END;
+    END IF;
+END;
+
+    
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Erro inesperado: ' || SQLERRM);
+        
+
+
+       
+END calcular_vlr_pallet
+;
