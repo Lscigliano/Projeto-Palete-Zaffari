@@ -1,65 +1,83 @@
-Tecnologia: PL/SQL - Oracle, API REST. ERP Consinco.
+# 💼 Projeto de Cobrança de Paletes
 
+## 🚀 Tecnologias Utilizadas
 
-Objetivo do projeto
+- **PL/SQL - Oracle**
+- **API REST**
+- **ERP Consinco**
 
-Automatizar o processo de cobrança de paletes, onde o usuário informa a nota fiscal de entrada do terceiro, e o sistema realiza o cálculo automático do valor a ser cobrado do fornecedor. 
-Esse valor pode ser baseado em um padrão previamente estabelecido ou, na ausência de um padrão, calculado por meio de uma média sobre a quantidade.
+---
 
-Com o cálculo sendo feito automaticamente, será gerada uma pré-venda na hora, com um produto chamado, por exemplo, "Serviço Palete", cujo valor corresponderá à cobrança dos paletes. 
-Isso evita fraudes e problemas com a tesouraria em casos onde o valor do palete possa ser alterado manualmente.
+## 🎯 Objetivo do Projeto
 
+Automatizar o processo de **cobrança de paletes**, onde o usuário informa a **nota fiscal de entrada de terceiros** e o sistema realiza o **cálculo automático** do valor a ser cobrado do fornecedor.
 
-Chegada do Caminhão:
+Esse valor pode ser:
 
-Ao chegar a carga, caso o fornecedor precise de serviço de descarga, a solicitação é feita à equipe de operação da logística.
+- Baseado em um **padrão previamente estabelecido**, ou  
+- Calculado por **média de quantidade**, caso o padrão não exista.
 
-Consulta e Cálculo da Cobrança:
+Com o cálculo automático:
+
+- Será gerada uma **pré-venda** com o produto chamado, por exemplo, **"Serviço Palete"**.
+- O valor da cobrança será inserido automaticamente.
+- Evita **fraudes e alterações manuais indevidas**, protegendo a tesouraria.
+
+---
+
+## 🚚 Fluxo do Processo
+
+### 1. Chegada do Caminhão
+
+Se o fornecedor precisar de **serviço de descarga**, a solicitação é feita para a **equipe de logística**.
+
+---
+
+### 2. Consulta e Cálculo da Cobrança
 
 O cálculo do valor é feito via sistema:
 
-Acessar: Paletes > Cobrança de Descarga > 1 - Cobrança Palete por Nota Fiscal.
 
-Criação do Pedido de Venda:
+---
 
-Se o motorista estiver com o valor da cobrança:
+### 3. Criação do Pedido de Venda
 
-Acessar: Palete > Processo Cobrança Palete - Versão FINAL > Criar Pedido de Venda.
+Caso o motorista esteja com o valor da cobrança:
 
-O operador deve:
 
-Informar o número da loja.
+O operador deve preencher:
 
-Informar a nota fiscal a ser cobrada.
+- Número da loja  
+- Nota fiscal a ser cobrada  
+- CNPJ (se necessário faturar em nome de terceiro)  
+  - Se for o mesmo CNPJ do fornecedor, informar **valor "0"**
 
-Informar o CNPJ (se for necessário faturar em nome de um terceiro).
+Após a confirmação:
 
-Caso utilize o mesmo CNPJ do fornecedor, informar o valor '0'.
+- Um **pedido de venda** é gerado automaticamente.
+- Se já existir pedido anterior para a mesma nota:
+  - O **pedido anterior é cancelado**.
+  - A **sequência do novo pedido é mantida**.
+- Se o valor da cobrança for **isento**, o pedido é **cancelado automaticamente**.
 
-Após confirmar:
+---
 
-Um pedido de venda é gerado com os dados informados.
+### 4. Execução do Serviço de Descarga
 
-Caso já exista pedido anterior para a mesma nota:
+O serviço é realizado **após o pagamento** do pedido de venda.
 
-O pedido anterior é cancelado.
+---
 
-A sequência do novo pedido é mantida.
+### 5. Conferência e Entrada da Carga
 
-Se o valor da cobrança for isento, o pedido será cancelado automaticamente.
+- Realizar a **conferência** da carga.  
+- Dar **entrada nas notas fiscais** vinculadas.
 
-Execução do Serviço de Descarga:
+---
 
-O serviço de descarga é executado após o pagamento.
-
-Conferência e Entrada de Carga:
-
-Realizar a conferência e dar entrada nas cargas correspondentes às notas fiscais vinculadas.
-
-Controle Financeiro:
+### 6. Controle Financeiro
 
 Após a entrada da nota fiscal:
 
-A nota será exibida no relatório:
-Palete > Cobrança de Descarga > Financeiro - Paletes.
-
+> A nota será exibida no relatório:  
+> **Palete > Cobrança de Descarga > Financeiro - Paletes**
