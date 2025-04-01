@@ -5,7 +5,7 @@
 - **PL/SQL - Oracle**
 - **API REST**
 - **ERP Consinco**
-
+  **Foi utilizado API, pois para criar automaticamente um pedido via insert no banco diretamente, era mais complexo, visto que as tabelas necessárias eram mais de 6, com a API, era mais simples apenas fazendo uma requisição POST.
 ---
 
 ## 🎯 Objetivo do Projeto
