@@ -1,4 +1,7 @@
-Objetivo do Processo
+Tecnologia: PL/SQL - Oracle, API REST. ERP Consinco.
+
+
+Objetivo do projeto
 
 Automatizar o processo de cobrança de paletes, onde o usuário informa a nota fiscal de entrada do terceiro, e o sistema realiza o cálculo automático do valor a ser cobrado do fornecedor. 
 Esse valor pode ser baseado em um padrão previamente estabelecido ou, na ausência de um padrão, calculado por meio de uma média sobre a quantidade.
