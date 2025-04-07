@@ -1,5 +1,4 @@
---31/03
-
+ --07/04 TESTEEEE 
 CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
        p_emprec IN NUMBER,
        p_numeronf IN NUMBER,
@@ -133,14 +132,13 @@ BEGIN
        AND LPAD(DIGCGCCPF, 2, '0') = SUBSTR(LPAD(p_cpfcnpj, 14, '0'), 13, 2)
        AND ROWNUM = 1;
 
-            DBMS_OUTPUT.PUT_LINE('Fornecedor alternativo encontrado: ' || v_nomerazao || ' | CNPJ: ' || v_cpfcnpj);
+             DBMS_OUTPUT.PUT_LINE('Fornecedor alternativo encontrado: ' || v_nomerazao || ' | CNPJ: ' || v_cpfcnpj);
             
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
-                DBMS_OUTPUT.PUT_LINE('CNPJ informado (' || p_cpfcnpj || ') NÃO encontrado. Mantendo fornecedor da NF.');
-                v_cpfcnpj := NULL;  
+               RAISE_APPLICATION_ERROR(-20000, 'CNPJ inválido. Verifique e tente novamente.'); 
         END;
-    END IF;
+END IF;
 
     -- *** Se não encontrou o fornecedor alternativo, busca o fornecedor da NF ***
     
@@ -342,10 +340,10 @@ END;
                          --' | idPedidoCanalVenda:' || v_idpedcanalvenda ||
                          ' | SeqCanalVendaAPI: ' || v_seqcanal );                       
         
-    EXCEPTION
+    /* EXCEPTION
         WHEN NO_DATA_FOUND THEN
             DBMS_OUTPUT.PUT_LINE('Nenhum dado encontrado para fornecedor.');
-            RETURN;
+            RETURN; */
     END;
     -- teste para ver se o id_pedido tem valor
 DBMS_OUTPUT.PUT_LINE('ID Pedido Canal teste: ' || v_id_pedido_canal);
@@ -485,12 +483,11 @@ END;
 
     
 
-EXCEPTION
+/* EXCEPTION
     WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Erro inesperado: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Erro inesperado: ' || SQLERRM); */
         
 
 
        
-END calcular_vlr_pallet
-;
+END calcular_vlr_pallet;
