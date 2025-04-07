@@ -1,0 +1,37 @@
+call consinco.calcular_vlr_pallet(#LT1,#LT2,#LT3);
+
+select pv.SEQPEDIDO,pv.
+IDPEDIDOCANALVENDA,pv.
+NROEMPRESA,pv.
+STATUSINTEGRACAO,pv.
+NROPEDVENDA,
+pdv.seqpessoa as COD_FORN_PEDIDO,
+g.nomerazao as NOMERAZAO_PEDIDO,
+DECODE(pdv.situacaoped,
+        'D',
+        'Digitação',
+        'A',
+        'Análise',
+        'L',
+        'Liberado',
+        'C',
+        'Cancelado',
+        'S',
+        'Separação',
+        'P',
+        'Pré-separação',
+        'R',
+        'Roteirização',
+        'W',
+        'Separado',
+        'F',
+        'Faturado',
+        'Desconhecido') AS STATUS_PEDIDO
+from mad_imppedvenda pv
+join mad_pedvenda pdv
+on (pdv.nropedvenda = pv.nropedvenda)
+join ge_pessoa g
+on (pdv.seqpessoa=g.seqpessoa)
+where 0 = 0
+and  pv.NROEMPRESA = #LT1
+and pv.IDPEDIDOCANALVENDA like 'CP_%' || #LT1 || '%_%' || #LT2 || '%'

@@ -1,0 +1,4 @@
+SELECT *  FROM VW_PEDIDOS_NOTAS
+WHERE DTARECEBIMENTO BETWEEN TO_DATE('#DT1', 'DD/MM/YYYY')
+                           AND TO_DATE('#DT2', 'DD/MM/YYYY')
+                           AND NROEMPRESA=#NR1
