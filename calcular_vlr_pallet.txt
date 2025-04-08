@@ -1,5 +1,5 @@
 --08/04 Tratado os erros para estourar na tela.
--- adicionado limit 1 na tratativa de erros
+-- ADICIONANDO mensagem de erro aprimorada
 
 CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
        p_emprec IN NUMBER,
@@ -181,7 +181,7 @@ BEGIN
 
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(-20002, 'Empresa inválida. Verifique e tente novamente.');
+            RAISE_APPLICATION_ERROR(-20002, 'Empresa não encontrada. Verifique e tente novamente.');
     END;
 END;
 
