@@ -1,4 +1,5 @@
- --07/04 TESTEEEE 
+--08/04 Tratado os erros para estourar na tela.
+
 CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
        p_emprec IN NUMBER,
        p_numeronf IN NUMBER,
@@ -52,12 +53,17 @@ CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
     v_seqcanal NUMBER(2) := 1;
 
     
+    --Tratamento de erros para estourar na tela.
+     v_erro1 NUMBER; --Numero NFE Invalido
+     v_erro2 NUMBER; --Numero Empresa invalido
+    
+    
     -- ID do pedido no canal de vendas
     v_id_pedido_canal VARCHAR2(60);
 
      -- Variável para armazenar o último número da sequência
      v_last_seq NUMBER;
-
+        
     -- Novo token de autenticação
     v_new_auth_token VARCHAR2(2000);
 
@@ -75,6 +81,10 @@ CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
     v_body_length NUMBER;
     v_token_start NUMBER;
     v_token_end   NUMBER;
+
+
+
+
 
 BEGIN
     --Requisição para obter o token de autenticação
@@ -140,6 +150,40 @@ BEGIN
         END;
 END IF;
 
+
+BEGIN
+
+    BEGIN
+        SELECT 1 INTO v_erro1
+        FROM MLF_AUXNOTAFISCAL
+        WHERE NUMERONF = p_numeronf;
+
+        -- Se encontrou, não faz nada e continua
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20001, 'Número da NFe inválido. Verifique e tente novamente.');
+    END;
+END;
+
+
+BEGIN
+
+    BEGIN
+        SELECT 1 INTO v_erro2
+        FROM MLF_AUXNOTAFISCAL
+        WHERE NROEMPRESA = p_emprec;
+
+        -- Se encontrou, não faz nada e continua
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20002, 'Empresa inválida. Verifique e tente novamente.');
+    END;
+END;
+
+
+
     -- *** Se não encontrou o fornecedor alternativo, busca o fornecedor da NF ***
     
     IF v_seqpessoa IS NULL THEN
@@ -162,7 +206,7 @@ END IF;
 
   EXCEPTION
     WHEN NO_DATA_FOUND THEN
-      DBMS_OUTPUT.PUT_LINE('Nenhum dado encontrado para fornecedor da NF.');
+      RAISE_APPLICATION_ERROR(-20001, 'Dado Inválido. Verifique e tente novamente.');
       RETURN;
   END;
 END IF;
@@ -188,25 +232,7 @@ END IF;
                              ' | VLR_COBRAR ITEM: ' || v_vlr_cobrar);
        
                   
-        
     END LOOP;
-    /*
-SELECT 
-  LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'),
-  NOMERAZAO,
-  CIDADE,
-  UF,
-  REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''),
-  PAIS
-INTO 
-  v_cpfcnpj,
-  v_nomerazao,
-  v_cidade,
-  v_uf,
-  v_bairro,
-  v_pais
-FROM GE_PESSOA GPES
-WHERE GPES.SEQPESSOA = v_seqpessoa; */
 
   
     IF v_total_cobrar IS NULL OR v_total_cobrar < 0.01 THEN
