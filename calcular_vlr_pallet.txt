@@ -1,4 +1,5 @@
 --08/04 Tratado os erros para estourar na tela.
+-- adicionado limit 1 na tratativa de erros
 
 CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
        p_emprec IN NUMBER,
@@ -156,7 +157,8 @@ BEGIN
     BEGIN
         SELECT 1 INTO v_erro1
         FROM MLF_AUXNOTAFISCAL
-        WHERE NUMERONF = p_numeronf;
+        WHERE NUMERONF = p_numeronf
+        AND ROWNUM = 1;
 
         -- Se encontrou, não faz nada e continua
 
@@ -172,7 +174,8 @@ BEGIN
     BEGIN
         SELECT 1 INTO v_erro2
         FROM MLF_AUXNOTAFISCAL
-        WHERE NROEMPRESA = p_emprec;
+        WHERE NROEMPRESA = p_emprec
+         AND ROWNUM = 1;
 
         -- Se encontrou, não faz nada e continua
 
