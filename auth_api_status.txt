@@ -1,0 +1,62 @@
+/*  09/04/2025 autenticação API..
+
+BEGIN
+   auth_api_status;
+END;
+
+*/
+
+
+CREATE OR REPLACE PROCEDURE auth_api_status IS
+    v_auth_url        VARCHAR2(500) := 'http://10.0.110.42:8343/api/v1/auth/login';
+    v_http_req        UTL_HTTP.REQ;
+    v_http_resp       UTL_HTTP.RESP;
+    v_buffer          VARCHAR2(4000);
+    v_response        CLOB;
+    v_token_start     NUMBER;
+    v_token_end       NUMBER;
+    v_auth_token      VARCHAR2(2000);
+
+    v_auth_body       CLOB := '{"company":"1","username":"APIZAFFARI","password":"apizaffari"}';
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Iniciando teste de autenticação com a API...');
+
+    -- Envia requisição HTTP POST
+    v_http_req := UTL_HTTP.BEGIN_REQUEST(v_auth_url, 'POST', 'HTTP/1.1');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Type', 'application/json');
+    UTL_HTTP.SET_HEADER(v_http_req, 'Content-Length', TO_CHAR(LENGTH(v_auth_body)));
+
+    UTL_HTTP.WRITE_TEXT(v_http_req, v_auth_body);
+    v_http_resp := UTL_HTTP.GET_RESPONSE(v_http_req);
+
+    -- Lê a resposta da API
+    v_response := '';
+    BEGIN
+        LOOP
+            UTL_HTTP.READ_LINE(v_http_resp, v_buffer, TRUE);
+            v_response := v_response || v_buffer;
+        END LOOP;
+    EXCEPTION
+        WHEN UTL_HTTP.END_OF_BODY THEN
+            NULL;
+    END;
+
+    UTL_HTTP.END_RESPONSE(v_http_resp);
+
+    -- Extrai o token da resposta
+    v_token_start := INSTR(v_response, '"access_token":"') + 16;
+    v_token_end   := INSTR(v_response, '"', v_token_start);
+
+    IF v_token_start > 16 AND v_token_end > v_token_start THEN
+        v_auth_token := SUBSTR(v_response, v_token_start, v_token_end - v_token_start);
+        DBMS_OUTPUT.PUT_LINE('SUCESSO: Token obtido com sucesso.');
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('FALHA: Token não encontrado na resposta da API.');
+    END IF;
+
+EXCEPTION
+    WHEN UTL_HTTP.REQUEST_FAILED THEN
+        DBMS_OUTPUT.PUT_LINE('FALHA: Erro na requisição HTTP. Verifique o endpoint ou rede.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('FALHA: Erro inesperado - ' || SQLERRM);
+END auth_api_status;
