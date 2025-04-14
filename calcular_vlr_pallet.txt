@@ -1,6 +1,4 @@
---08/04 Tratado os erros para estourar na tela.
--- ADICIONANDO mensagem de erro aprimorada
-
+--  14/04 Adicionado o campo contribuinte ICMS na criação do pedido.
 CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
        p_emprec IN NUMBER,
        p_numeronf IN NUMBER,
@@ -51,6 +49,7 @@ CREATE OR REPLACE PROCEDURE calcular_vlr_pallet(
     v_nroformapagto NUMBER(38) := 1;
     v_nrocondpagto NUMBER(38) := 0;
     v_valorpagto NUMBER(38);
+    v_indContribIcms VARCHAR2(1);
     v_seqcanal NUMBER(2) := 1;
 
     
@@ -136,8 +135,8 @@ BEGIN
       SELECT LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'), 
        NOMERAZAO, CIDADE, UF, 
        REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''), 
-       PAIS, SEQPESSOA
-       INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa
+       PAIS, SEQPESSOA, indContribIcms
+       INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa, v_indContribIcms
        FROM GE_PESSOA
        WHERE LPAD(NROCGCCPF, 12, '0') = SUBSTR(LPAD(p_cpfcnpj, 14, '0'), 1, 12)
        AND LPAD(DIGCGCCPF, 2, '0') = SUBSTR(LPAD(p_cpfcnpj, 14, '0'), 13, 2)
@@ -194,8 +193,8 @@ END;
      SELECT LPAD(NROCGCCPF, 12, '0') || LPAD(DIGCGCCPF, 2, '0'),
            NOMERAZAO, CIDADE, UF,
            REGEXP_REPLACE(SUBSTR(BAIRRO, 1, 30), '[^a-zA-Z0-9 ]', ''),
-           PAIS, SEQPESSOA
-    INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa
+           PAIS, SEQPESSOA, indContribIcms
+    INTO v_cpfcnpj, v_nomerazao, v_cidade, v_uf, v_bairro, v_pais, v_seqpessoa, v_indContribIcms
     FROM GE_PESSOA
     WHERE SEQPESSOA = (
       SELECT SEQPESSOA
@@ -366,7 +365,7 @@ END;
                          ' | nrocondpagto:' || v_nrocondpagto ||
                          ' | valorpagto:'   || v_valorpagto ||                         
                          ' | SeqCanalVenda:' || v_seqcanal ||
-                         --' | idPedidoCanalVenda:' || v_idpedcanalvenda ||
+                         ' | indContribIcms:' || v_indContribIcms ||
                          ' | SeqCanalVendaAPI: ' || v_seqcanal );                       
         
     /* EXCEPTION
@@ -397,6 +396,7 @@ DBMS_OUTPUT.PUT_LINE('ID Pedido Canal teste: ' || v_id_pedido_canal);
             "cidade": "' || v_cidade || '",
             "uf": "' || v_uf || '",
             "pais": "' || v_pais || '",
+            "indContribIcms": "' || v_indContribIcms || '",
             "bairro": "' || v_bairro || '"
         },
         "itemDto": [
@@ -493,7 +493,6 @@ end;
                    c.Dtacancelamento = SYSDATE,
                    c.Usucancelamento = 'CONSINCO',
                    c.Obscancelamento = 'Valor COBRANCA MENOR QUE 0.01',
-                   c.Obspedido= 'Valor COBRANCA MENOR QUE 0.01',
                    c.Motcancelamento = 'Valor COBRANCA MENOR QUE 0.01'
              WHERE c.Nropedvenda = v_nropedvenda
                AND c.Nroempresa = p_emprec;
