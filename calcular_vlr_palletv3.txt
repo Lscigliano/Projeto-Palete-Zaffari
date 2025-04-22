@@ -25,7 +25,8 @@ CREATE OR REPLACE PROCEDURE calcular_vlr_pallet3(
     v_total_cobrar NUMBER := 0; --não pode alterar esse valor.
     
     
-
+    --Verifica se as NF são do mesmo fornecedor.
+    v_count_dist NUMBER;
     
     --Variavel cancelamento pedido anterior;
     --v_last_seq NUMBER;
@@ -194,7 +195,21 @@ BEGIN
     END;
 END;
 
+BEGIN
+    SELECT COUNT(DISTINCT SEQPESSOA)
+    INTO v_count_dist
+    FROM VIEW_COBRANCA_PALETE
+    WHERE EMP_REC = p_emprec
+      AND NUMERONF IN (
+          SELECT TO_NUMBER(TRIM(REGEXP_SUBSTR(p_numeronf, '[^,]+', 1, LEVEL)))
+          FROM dual
+          CONNECT BY REGEXP_SUBSTR(p_numeronf, '[^,]+', 1, LEVEL) IS NOT NULL
+      );
 
+    IF v_count_dist > 1 THEN
+        RAISE_APPLICATION_ERROR(-20000, 'Notas de fornecedores diferentes. Verifique.');
+    END IF;
+END;
 
     -- *** Se não encontrou o fornecedor alternativo, busca o fornecedor da NF ***
     
@@ -523,13 +538,7 @@ end;
         END;
     END IF;
 END;
-
-    
-
-/* EXCEPTION
-    WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Erro inesperado: ' || SQLERRM); */
-        
+      
 
 
        
