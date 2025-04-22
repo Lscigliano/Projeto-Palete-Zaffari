@@ -1,0 +1,28 @@
+CREATE OR REPLACE PROCEDURE calcular_vlr_palletv2 (
+   p_emprec       IN NUMBER,
+   p_numeros_nf   IN VARCHAR2,  -- Ex: '123456,123457,123458'
+   p_cpfcnpj      IN VARCHAR2
+) IS
+BEGIN
+   FOR nf IN (
+      SELECT TRIM(REGEXP_SUBSTR(p_numeros_nf, '[^,]+', 1, LEVEL)) AS numeronf
+      FROM DUAL
+      CONNECT BY REGEXP_SUBSTR(p_numeros_nf, '[^,]+', 1, LEVEL) IS NOT NULL
+   )
+   LOOP
+      BEGIN
+         -- Aqui chamamos a procedure original, reaproveitando as regras de negócio
+         calcular_vlr_pallet(
+            p_emprec    => p_emprec,
+            p_numeronf  => nf.numeronf,
+            p_cpfcnpj   => p_cpfcnpj
+         );
+
+         DBMS_OUTPUT.PUT_LINE('NF ' || nf.numeronf || ' processada com sucesso.');
+
+      EXCEPTION
+         WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erro ao processar NF ' || nf.numeronf || ': ' || SQLERRM);
+      END;
+   END LOOP;
+END calcular_vlr_palletv2;
